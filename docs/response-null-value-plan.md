@@ -90,29 +90,31 @@ No runtime behavior change yet — this is pure plumbing + wiring the **type** s
 
 Goal: prove the exact runtime crash the maintainer described, with tests that fail for the *right* reason.
 
-- [ ] Extend test infra to **execute** the generated client's `processResponse`, not just compile it.
-      Options (pick the lightest that runs in CI where `npx`/node already exist per `TypeScriptCompiler`):
-  - Emit a small harness `.ts`/`.js` that instantiates the generated client with a **fake
-    fetch/http** returning a controlled `(status, body)`, calls the method, and prints/returns the
-    resolved value; assert on it from the .NET test (compile with `tsc`, run with `node`), **or**
-  - Add a focused Node test (jest/vitest or a plain node script) under the test project that the
-    .NET test shells out to.
-  - Decision point: prefer reusing the existing `npx`/`tsc` path in `TypeScriptCompiler` and add a
-    `node` execution step returning stdout for assertions.
-- [ ] Add runtime cases for `ResponseNullValue = Undefined` across **all TS templates**
-      (Fetch, Angular, Aurelia, Axios, AngularJS, JQueryCallbacks, JQueryPromises) asserting the
-      resolved value — TS output must be consistent everywhere once this feature lands:
-  - [ ] **JSON `null` body**, HTTP 200, nullable schema → expected `undefined` (currently `null` → FAILS).
-  - [ ] **Empty body** (`""`), HTTP 200 → expected `undefined`.
-  - [ ] **HTTP 204 No Content** → expected `undefined` (no-content branch).
-- [ ] Add the mirror cases for `ResponseNullValue = Null` asserting `null` (guards the default;
-      these should pass immediately and lock in existing behavior).
-- [ ] Confirm the `Undefined` cases fail **because runtime returns `null`** (inspect the assertion
-      message — it must show `null` vs expected `undefined`, not a compile error or harness bug).
-- [ ] **Commit** (red), clearly marked, e.g.:
+- [x] Extend test infra to **execute** the generated client, not just compile it.
+      → Added [`TypeScriptRunner`](../src/NSwag.CodeGeneration.TypeScript.Tests/TypeScriptRunner.cs): writes
+      the generated code + a harness to a temp `.ts` in the test project, compiles with
+      `tsc --module commonjs --target es2017 --lib es2017,dom --moduleResolution node`, runs the emitted
+      `.js` with `node`, and returns stdout. Reuses the `npx`/`node` discovery pattern from `TypeScriptCompiler`.
+- [x] Harness drives the **real public method through a mocked transport** (faithful to production). A
+      single fake response satisfies both the Fetch shape (`status`/`headers.forEach`/`text()`) and the
+      Axios shape (`status`/`headers`/`data`), so one harness serves both templates. It prints
+      `__RUNTIME_RESULT__=<null|undefined|typeof>` for the .NET test to assert on.
+- [x] Runtime scope: **Fetch + Axios** (deps already present). Other templates get consistency coverage
+      via Phase 3 template edits + snapshots (runtime-executing them would require pulling in rxjs,
+      @angular/core, jquery, aurelia — out of scope). See Decisions.
+- [x] Cases covered (see [TypeScriptResponseRuntimeTests](../src/NSwag.CodeGeneration.TypeScript.Tests/TypeScriptResponseRuntimeTests.cs)):
+  - [x] **Nullable DTO return** — JSON `null`, empty body, and 204 all funnel to null/undefined
+        uniformly on both templates. `Undefined` → expect `undefined` (RED); `Null` → expect `null` (guard).
+  - [x] **Nullable string return** — JSON `null` and 204 on both templates (the maintainer's example).
+        Empty body for an Axios primitive stays `""` per the "value, not absent" decision, so it is
+        intentionally **not** asserted for the string case.
+- [x] Confirmed the `Undefined` cases fail **because runtime returns `null`** — every failure shows
+      `Expected: "undefined" / Actual: "null"`, not a compile error or harness bug.
+      → **Result: 20 runtime tests — 10 RED (all `Undefined`) + 10 green guards (all `Null`).**
+- [x] **Commit** (red), clearly marked, e.g.:
       "RED: runtime tests expose null/undefined disagreement for ResponseNullValue=Undefined
-      (known-failing, fixed in next commit)". Consider `[Fact(Skip=...)]`? **No** — keep them
-      unskipped so the red state is real; the marked commit message documents intent.
+      (known-failing, fixed in next commit)". Keep them unskipped so the red state is real; the marked
+      commit message documents intent. _(committed manually)_
 
 ## Phase 3 — GREEN commit (make runtime consistent)
 
@@ -184,6 +186,17 @@ Goal: change the runtime conversion so it matches the declared type, for every s
      reads a body.
 - **204 must not throw.** It resolves with the configured token — the empty value is representable by
   definition, so a 204 is a successful "no content," not an error.
+- **Empty body = "value, not absent" for primitives.** The null token applies only where the value is
+  genuinely null/absent (Fetch's `_responseText === ""` coercion, DTO funnels through `x ? convert : null`,
+  JSON `null`, and 204). Axios delivers `data = ""` for an empty primitive body and returns it verbatim;
+  that empty string is a real value and is left unchanged in **both** modes — forcing it to the token
+  would change existing Null-mode Axios behavior, violating "preserve existing behavior." A nullable DTO
+  return funnels all three cases to null uniformly across templates, so it is the vehicle for full
+  3-case coverage; the string case is covered for JSON `null` and 204 only.
+- **Runtime execution scope: Fetch + Axios** (their deps are already installed). The feature is still
+  made consistent across *all* templates via Phase 3 template edits and snapshots; only the executable
+  runtime proof is limited to these two, to avoid pulling rxjs / @angular/core / jquery / aurelia into
+  the test project.
 
 ---
 
