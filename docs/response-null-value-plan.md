@@ -45,9 +45,13 @@ Two problems flagged by the maintainer:
 
 ## Phase 0 — Baseline & safety net
 
-- [ ] Confirm the branch builds and the existing suite runs: `dotnet test src/NSwag.CodeGeneration.TypeScript.Tests`.
-- [ ] Note current snapshot delta vs `master` (`git diff master..HEAD --stat`) so we can prove
+- [x] Confirm the branch builds and the existing suite runs: `dotnet test src/NSwag.CodeGeneration.TypeScript.Tests`.
+      → Build clean (0 warn/0 err); **67 passed, 0 failed** (~24s).
+- [x] Note current snapshot delta vs `master` (`git diff master..HEAD --stat`) so we can prove
       Phase 1 reverts the unrelated churn.
+      → Baseline delta: **27 `.verified.txt` snapshots changed** (~15 unrelated Axios/Fetch/etc. flipped
+      to `| undefined`, plus 8 new `nullSetting=…` return-type snapshots), `TypeScriptOperationModel.cs`,
+      and 2 test files (`TypeScriptOperationReturnTests.cs`, `TypeScriptOperationParameterTests.cs`).
 
 ## Phase 1 — Introduce the configuration value first (decouple, reduce churn)
 
