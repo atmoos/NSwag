@@ -58,28 +58,33 @@ Two problems flagged by the maintainer:
 Goal: default behavior becomes identical to `master`, so the ~15 unrelated snapshots revert.
 No runtime behavior change yet — this is pure plumbing + wiring the **type** side onto the new knob.
 
-- [ ] Add `ResponseNullValue` to `TypeScriptClientGeneratorSettings`, type `TypeScriptNullValue`,
+- [x] Add `ResponseNullValue` to `TypeScriptClientGeneratorSettings`, type `TypeScriptNullValue`,
       **default `TypeScriptNullValue.Null`** (set default in the constructor for clarity).
-- [ ] Change [`ResultType`](../src/NSwag.CodeGeneration.TypeScript/Models/TypeScriptOperationModel.cs#L88)
+- [x] Change [`ResultType`](../src/NSwag.CodeGeneration.TypeScript/Models/TypeScriptOperationModel.cs#L88)
       to read `_settings.ResponseNullValue` instead of `_settings.TypeScriptGeneratorSettings.NullValue`.
-- [ ] Keep the "`any` already includes null/undefined → no redundant union" fix (it is a genuine
-      improvement and independent of this setting). Verify whether it must stay to keep default
-      snapshots clean; if it causes its own churn, capture that separately.
-- [ ] Expose the setting to templates via `TypeScriptClientTemplateModel` and/or
-      `TypeScriptOperationModel` as a rendered string helper, e.g.
-      `ResponseNullValue => _settings.ResponseNullValue == Undefined ? "undefined" : "null"`.
-      (Needed by Phase 3; add it now so the surface exists.)
-- [ ] Wire the CLI: add a `ResponseNullValue` argument in
+      → Kept the `optionalReturn` string mapping (the enum stringifies to "Null"/"Undefined", so it can't
+      be emitted directly); only the source of the enum changed.
+- [x] Keep the "`any` already includes null/undefined → no redundant union" fix (it is a genuine
+      improvement and independent of this setting). → Kept; causes no extra churn (all unrelated
+      snapshots reverted cleanly to `master`).
+- [ ] ~~Expose the setting to templates as a rendered string helper.~~ **Deferred to Phase 3** — the
+      helper isn't needed until the runtime templates consume it, and adding it now risks a naming clash
+      with the `ResponseNullValue` enum property. Added in Phase 3 as `operation.ResultNullValue`
+      (see the first Phase 3 step).
+- [x] Wire the CLI: added a `ResponseNullValue` argument in
       [OpenApiToTypeScriptClientCommand.cs](../src/NSwag.Commands/Commands/CodeGeneration/OpenApiToTypeScriptClientCommand.cs)
-      (mirror the existing `NullValue` argument at line 110), get/set → `Settings.ResponseNullValue`.
-- [ ] Wire NSwagStudio: add a dropdown bound to a `ResponseNullValues` array, mirroring
-      [`NullValues`](../src/NSwagStudio/ViewModels/CodeGenerators/SwaggerToTypeScriptClientGeneratorViewModel.cs#L75).
-- [ ] Update `TypeScriptOperationReturnTests` to drive the new `ResponseNullValue` setting
-      (instead of `TypeScriptGeneratorSettings.NullValue`).
-- [ ] Re-run tests and **regenerate/verify snapshots**. Expected:
-  - Unrelated Axios/Fetch/etc. snapshots revert to `| null` (match `master`).
+      (mirrors the existing `NullValue` argument), get/set → `Settings.ResponseNullValue`.
+- [x] Wire NSwagStudio: added a `ResponseNullValues` list on the view model and a bound `ComboBox`
+      in `SwaggerToTypeScriptClientGeneratorView.xaml`, mirroring the existing `NullValue` dropdown.
+- [x] Update `TypeScriptOperationReturnTests` to drive the new `ResponseNullValue` setting
+      (instead of `TypeScriptGeneratorSettings.NullValue`). Also reverted the `[return: NotNull]`
+      coupling workarounds in `TypeScriptOperationParameterTests` (+ the `NJsonSchema.Annotations` import).
+- [x] Re-run tests and **regenerate/verify snapshots**. Result:
+  - Unrelated Axios/Fetch/discriminator/parameter snapshots reverted to `master` (0 diff vs master).
   - The dedicated return-type snapshots keep both `nullSetting=Null` and `nullSetting=Undefined` variants.
-- [ ] **Commit** (green): "Introduce ResponseNullValue setting (type-only, default Null)".
+  - **67 passed, 0 failed.** Working-tree-vs-master delta is now only: the 8 new return snapshots, the
+    5 code files, and the new return tests — no unrelated churn.
+- [x] **Commit** (green): "Introduce ResponseNullValue setting (type-only, default Null)". _(committed manually)_
 
 ## Phase 2 — Runtime test harness + RED commit (capture the bug)
 
@@ -113,9 +118,14 @@ Goal: prove the exact runtime crash the maintainer described, with tests that fa
 
 Goal: change the runtime conversion so it matches the declared type, for every supported template.
 
+- [ ] **Expose the rendered token to templates** (deferred from Phase 1). Add a string helper on
+      `TypeScriptOperationModel`, e.g. `ResultNullValue => _settings.ResponseNullValue ==
+      TypeScriptNullValue.Undefined ? "undefined" : "null"`. Named `ResultNullValue` (mirrors
+      `ResultType`) to avoid clashing with the `ResponseNullValue` **enum** on the settings, which
+      stringifies to "Null"/"Undefined". Templates below reference `{{ operation.ResultNullValue }}`.
 - [ ] In [Client.ProcessResponse.HandleStatusCode.liquid](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.HandleStatusCode.liquid):
   - [ ] Empty-body ternary (lines 51, 54): `_responseText === "" ? null : ...` →
-        use the configured null token (`{{ operation.ResponseNullValue }}` /
+        use the configured null token (`{{ operation.ResultNullValue }}` /
         `... as any`), i.e. `undefined` when opted in.
   - [ ] JSON `null` crash source: after `JSON.parse(...)`, **explicitly normalize** the result to the
         configured token in **both** modes — `result === null ? undefined : result` when `Undefined`,

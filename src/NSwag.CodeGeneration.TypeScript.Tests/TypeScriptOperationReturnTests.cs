@@ -101,10 +101,7 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             var document = await generator.GenerateForControllerAsync<TController>();
             var clientGenerator = new TypeScriptClientGenerator(document, new TypeScriptClientGeneratorSettings
             {
-                TypeScriptGeneratorSettings =
-                {
-                    NullValue = nullSetting
-                }
+                ResponseNullValue = nullSetting
             });
 
             var json = document.ToJson();
