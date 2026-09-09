@@ -5,12 +5,17 @@ using NJsonSchema.CodeGeneration.TypeScript;
 using NJsonSchema.NewtonsoftJson.Generation;
 using NSwag.CodeGeneration.Tests;
 using NSwag.Generation.WebApi;
-using Xunit.v3;
+using static NSwag.CodeGeneration.TypeScript.TypeScriptTemplate;
 
 namespace NSwag.CodeGeneration.TypeScript.Tests
 {
     public class TypeScriptOperationReturnTests
     {
+        public class ReturnDto
+        {
+            public string Value { get; set; }
+        }
+
         public class NullableReturnController
         {
             [Route("foo")]
@@ -51,17 +56,43 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             }
         }
 
+        public class AllReturnKindsController
+        {
+            [Route("nullableString")]
+            [return: CanBeNull]
+            public string NullableString(int a) => null;
+
+            [Route("nonNullableString")]
+            [return: NotNull]
+            public string NonNullableString(int a) => string.Empty;
+
+            [Route("nullableObject")]
+            [return: CanBeNull]
+            public ReturnDto NullableObject(int a) => null;
+
+            [Route("nonNullableObject")]
+            [return: NotNull]
+            public ReturnDto NonNullableObject(int a) => new ReturnDto();
+
+            [Route("nullableAny")]
+            [return: CanBeNull]
+            public object NullableAny(int a) => null;
+
+            [Route("voidReturn")]
+            public void VoidReturn(int a) { }
+        }
+
 
         [Fact]
         public async Task When_return_value_is_nullable_and_settings_uses_null_then_it_is_a_union_type_with_null()
         {
-            await RunTest<NullableReturnController>(TypeScriptNullValue.Null);
+            await VerifyFetchTest<NullableReturnController>(TypeScriptNullValue.Null);
         }
 
         [Fact]
         public async Task When_return_value_is_nullable_and_settings_uses_undefined_then_it_is_a_union_type_with_undefined()
         {
-            await RunTest<NullableReturnController>(TypeScriptNullValue.Undefined);
+            await VerifyFetchTest<NullableReturnController>(TypeScriptNullValue.Undefined);
         }
 
         [Theory]
@@ -69,7 +100,7 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         [InlineData(TypeScriptNullValue.Undefined)]
         public async Task When_return_value_is_non_nullable_and_then_it_is_not_a_union_type_with(TypeScriptNullValue nullSetting)
         {
-            await RunTest<NonNullableReturnController>(nullSetting);
+            await VerifyFetchTest<NonNullableReturnController>(nullSetting);
         }
 
         [Theory]
@@ -77,7 +108,7 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         [InlineData(TypeScriptNullValue.Undefined)]
         public async Task When_return_value_is_any_nullable_then_it_is_only_any(TypeScriptNullValue nullSetting)
         {
-            await RunTest<NullableReturnAnyController>(nullSetting);
+            await VerifyFetchTest<NullableReturnAnyController>(nullSetting);
         }
 
         [Theory]
@@ -85,22 +116,69 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         [InlineData(TypeScriptNullValue.Undefined)]
         public async Task When_return_value_is_non_nullable_any_then_it_is_only_any(TypeScriptNullValue nullSetting)
         {
-            await RunTest<NonNullableReturnAnyController>(nullSetting);
+            await VerifyFetchTest<NonNullableReturnAnyController>(nullSetting);
         }
 
-        private static async Task RunTest<TController>(TypeScriptNullValue nullSetting)
+        [Theory]
+        [MemberData(nameof(CompileMatrix))]
+        public async Task All_return_kinds_compile_for_client_template(TypeScriptTemplate template, TypeScriptNullValue nullSetting)
+        {
+            // Arrange
+            var nullValue = nullSetting == TypeScriptNullValue.Null ? "null" : "undefined";
+            var innerUnion = $"{nameof(ReturnDto)} | {nullValue}";
+
+            var code = await RunTest<AllReturnKindsController>(nullSetting, template);
+
+            // The nullable object return carries the configured union type in every client kind.
+            Assert.Contains(innerUnion, code);
+
+            // Promise-based clients surface it as the awaited result type (Promise<...>, and AngularJS's
+            // ng.IPromise<...> which contains that substring). JQueryCallbacks is callback-based — it returns
+            // the jQuery XHR and delivers the result via an onSuccess callback — so it has no Promise wrapper.
+            if (template != JQueryCallbacks)
+            {
+                Assert.Contains($"Promise<{innerUnion}>", code);
+            }
+        }
+
+        /// <summary>Templates whose generated client can be type-checked with the test project's installed
+        /// npm deps, each in both null-value modes. Angular (needs @angular/core + rxjs) and Aurelia (needs
+        /// aurelia-fetch-client) are excluded, matching the rest of the suite (e.g. AngularTests does not
+        /// compile-check its output).</summary>
+        public static TheoryData<TypeScriptTemplate, TypeScriptNullValue> CompileMatrix()
+        {
+            var data = new TheoryData<TypeScriptTemplate, TypeScriptNullValue>();
+            var templates = new[] { Fetch, Axios, AngularJS, JQueryCallbacks, JQueryPromises, };
+
+            foreach (var template in templates)
+            {
+                data.Add(template, TypeScriptNullValue.Null);
+                data.Add(template, TypeScriptNullValue.Undefined);
+            }
+
+            return data;
+        }
+
+        private static async Task VerifyFetchTest<TController>(TypeScriptNullValue nullSetting)
             where TController : class
         {
+            var code = await RunTest<TController>(nullSetting, Fetch);
+            await VerifyHelper.Verify(code);
+        }
 
+        private static async Task<string> RunTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTemplate template)
+            where TController : class
+        {
             // Arrange
             var generator = new WebApiOpenApiDocumentGenerator(new WebApiOpenApiDocumentGeneratorSettings
             {
-                SchemaSettings = new NewtonsoftJsonSchemaGeneratorSettings { SchemaType = SchemaType.Swagger2 }
+                SchemaSettings = new NewtonsoftJsonSchemaGeneratorSettings { SchemaType = SchemaType.OpenApi3 }
             });
 
             var document = await generator.GenerateForControllerAsync<TController>();
             var clientGenerator = new TypeScriptClientGenerator(document, new TypeScriptClientGeneratorSettings
             {
+                Template = template,
                 ResponseNullValue = nullSetting
             });
 
@@ -111,8 +189,8 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             var code = clientGenerator.GenerateFile();
 
             // Assert
-            await VerifyHelper.Verify(code);
             TypeScriptCompiler.AssertCompile(code);
+            return code;
         }
     }
 }

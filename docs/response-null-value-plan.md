@@ -177,7 +177,14 @@ Goal: change the runtime conversion so it matches the declared type, for every s
       `..._is_only_any_...` snapshots.
 - [x] Docs/XML comments for the new setting are in place (done in Phase 1): settings property XML doc,
       CLI `ResponseNullValue` argument description, and the Studio label + `ResponseNullValue` tooltip.
-- [x] Full suite green: **87 passed, 0 failed**.
+- [x] **Compile coverage across client templates** (plan omission: return tests only covered Fetch).
+      Added `All_return_kinds_compile_for_client_template` — an `AssertCompile`-only `[Theory]` over a
+      single `AllReturnKindsController` (nullable/non-nullable × string/object/any + void) for
+      **Fetch, Axios, AngularJS, JQueryCallbacks, JQueryPromises**, each in **both** null-value modes
+      (10 cases). Compile-only → no new snapshots, zero churn. Angular/Aurelia excluded (missing npm type
+      deps: @angular/core+rxjs, aurelia-fetch-client) — same reason the rest of the suite doesn't compile
+      them; would need those deps added to cover.
+- [x] Full suite green: **97 passed, 0 failed**.
 - [x] Final review of `git diff master`: the only snapshot changes are the **8 new return-test
       snapshots**; no existing snapshot churn. Code/tests limited to the intended files.
 
