@@ -159,14 +159,27 @@ Goal: change the runtime conversion so it matches the declared type, for every s
 
 ## Phase 4 — Consistency sweep & polish
 
-- [ ] Audit every template that emits a success/no-content return for a stray literal `null`
-      (grep `null as any`, `= null`, `? null :` under `Templates/`); confirm none bypass the setting.
-- [ ] Decide/document behavior for **wrapped responses** (`WrapResponse`) — the `result` payload
-      inside the response class should follow the same rule.
-- [ ] Confirm `any`/`object` returns stay unioned correctly (no `any | undefined` redundancy).
-- [ ] Update docs/XML comments for the new setting (CLI help text + Studio tooltip).
-- [ ] Full suite green: `dotnet test src/NSwag.CodeGeneration.TypeScript.Tests`.
-- [ ] Final review of `git diff master..HEAD --stat`: only intended snapshots changed.
+- [x] Audit every template for a response-value `null` that bypasses the setting. Swept all
+      `*.liquid`. Findings: the two JQuery `processX` **return-type signatures** hardcoded `| null`
+      (`JQueryPromisesClient` unconditional; `JQueryCallbacksClient` gated on `HasResultType`) — fixed to
+      `| {{ operation.ResultNullValue }}`. Zero churn (Null renders `| null`; no Undefined JQuery
+      snapshots exist). The remaining `null`s are non-response contexts and correctly left alone:
+      `throwException`'s ApiException `result` arg (error path, not the success value) and the `"null"`
+      query-string literals / "cannot be null" messages in `Client.RequestUrl`/`Client.RequestBody`.
+- [x] **Wrapped responses** (`WrapResponse`): confirmed by inspection that the payload follows the same
+      rule — the success branch wraps the already-coerced `result` (`new ResponseClass(status, _headers,
+      result{{sc}})`), and the no-body/204 branches wrap `{{ operation.ResultNullValue }} as any`. The
+      wrapped result type is `ResponseClass<resultType>` where `resultType` carries the union. Note:
+      there is **no `WrapResponses` test at all** (pre-existing gap) — behavior verified via code, not a
+      snapshot/runtime test. Optional follow-up: add a wrapped nullable case.
+- [x] Confirmed `any`/`object` returns stay unioned correctly — `ResultType` guards `not "any"`, so a
+      nullable `any` renders `Promise<any>` (no `any | undefined`/`any | null`). Verified in the
+      `..._is_only_any_...` snapshots.
+- [x] Docs/XML comments for the new setting are in place (done in Phase 1): settings property XML doc,
+      CLI `ResponseNullValue` argument description, and the Studio label + `ResponseNullValue` tooltip.
+- [x] Full suite green: **87 passed, 0 failed**.
+- [x] Final review of `git diff master`: the only snapshot changes are the **8 new return-test
+      snapshots**; no existing snapshot churn. Code/tests limited to the intended files.
 
 ## Decisions
 
