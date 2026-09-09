@@ -40,5 +40,14 @@ namespace NSwag.CodeGeneration.TypeScript.Models
 
         /// <summary>Gets or sets a value indicating whether to use a DTO class.</summary>
         public bool UseDtoClass => _settings.TypeScriptGeneratorSettings.GetTypeStyle(Type) != TypeScriptTypeStyle.Interface;
+
+        /// <summary>Gets a value indicating whether a null result value must be coerced to the configured
+        /// response null value at runtime so it matches the declared result type. Only needed when the
+        /// configured value is <see cref="TypeScriptNullValue.Undefined"/> — in <c>Null</c> mode the
+        /// runtime already yields <c>null</c>, so no coercion (and no snapshot churn) is required. Also
+        /// mirrors the condition under which <see cref="TypeScriptOperationModel.ResultType"/> adds a
+        /// union: the response is nullable and the type is not "any" (which already allows null/undefined).</summary>
+        public bool CoerceToResponseNullValue =>
+            _settings.ResponseNullValue == TypeScriptNullValue.Undefined && IsNullable && Type != "any";
     }
 }

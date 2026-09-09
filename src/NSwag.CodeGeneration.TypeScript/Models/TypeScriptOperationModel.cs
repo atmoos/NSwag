@@ -8,6 +8,7 @@
 
 using NJsonSchema;
 using NJsonSchema.CodeGeneration;
+using NJsonSchema.CodeGeneration.TypeScript;
 using NSwag.CodeGeneration.Models;
 
 namespace NSwag.CodeGeneration.TypeScript.Models
@@ -85,8 +86,9 @@ namespace NSwag.CodeGeneration.TypeScript.Models
                 var response = GetSuccessResponse();
                 var isNullable = response.Value?.IsNullable(_settings.CodeGeneratorSettings.SchemaType) == true;
 
-                var resultType = isNullable && UnwrappedResultType != "void" && UnwrappedResultType != "null" ?
-                    UnwrappedResultType + " | null" :
+                // "any" already includes null and undefined, so a union like "any | null" is redundant.
+                var resultType = isNullable && UnwrappedResultType is not "void" and not "any" ?
+                    UnwrappedResultType + " | " + ResultNullValue :
                     UnwrappedResultType;
 
                 if (WrapResponse)
@@ -99,6 +101,10 @@ namespace NSwag.CodeGeneration.TypeScript.Models
                 }
             }
         }
+
+        /// <summary>Gets the TypeScript literal ("null" or "undefined") used to represent an absent response
+        /// value, both in the result type and in the runtime response conversion (see <see cref="TypeScriptClientGeneratorSettings.ResponseNullValue"/>).</summary>
+        public string ResultNullValue => _settings.ResponseNullValue == TypeScriptNullValue.Undefined ? "undefined" : "null";
 
         /// <summary>Gets a value indicating whether the operation requires mappings for DTO generation.</summary>
         public bool RequiresMappings => Responses.Any(r => r.HasType && r.ActualResponseSchema.UsesComplexObjectSchema());
