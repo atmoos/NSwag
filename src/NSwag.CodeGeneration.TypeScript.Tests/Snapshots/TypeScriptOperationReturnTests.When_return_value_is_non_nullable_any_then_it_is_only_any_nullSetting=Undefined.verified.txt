@@ -38,9 +38,9 @@ export class NonNullableReturnAnyClient {
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            let result200: any = null;
-            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
-                result200 = resultData200 !== undefined ? resultData200 : null as any;
+            let result200: any = undefined;
+            let resultData200 = _responseText === "" ? undefined : JSON.parse(_responseText, this.jsonParseReviver);
+                result200 = resultData200;
     
             return result200;
             });
@@ -49,7 +49,7 @@ export class NonNullableReturnAnyClient {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<any>(null as any);
+        return Promise.resolve<any>(undefined as any);
     }
 }
 

@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet test *)"
+      "Bash(dotnet test *)",
+      "Bash(dotnet build *)",
+      "Read(**/docs/response-null-value-plan.md)",
+      "Edit(**/docs/response-null-value-plan.md)",
+      "Write(**/docs/response-null-value-plan.md)"
     ]
   }
 }

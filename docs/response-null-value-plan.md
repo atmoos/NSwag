@@ -120,36 +120,42 @@ Goal: prove the exact runtime crash the maintainer described, with tests that fa
 
 Goal: change the runtime conversion so it matches the declared type, for every supported template.
 
-- [ ] **Expose the rendered token to templates** (deferred from Phase 1). Add a string helper on
-      `TypeScriptOperationModel`, e.g. `ResultNullValue => _settings.ResponseNullValue ==
-      TypeScriptNullValue.Undefined ? "undefined" : "null"`. Named `ResultNullValue` (mirrors
-      `ResultType`) to avoid clashing with the `ResponseNullValue` **enum** on the settings, which
-      stringifies to "Null"/"Undefined". Templates below reference `{{ operation.ResultNullValue }}`.
-- [ ] In [Client.ProcessResponse.HandleStatusCode.liquid](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.HandleStatusCode.liquid):
-  - [ ] Empty-body ternary (lines 51, 54): `_responseText === "" ? null : ...` →
-        use the configured null token (`{{ operation.ResultNullValue }}` /
-        `... as any`), i.e. `undefined` when opted in.
-  - [ ] JSON `null` crash source: after `JSON.parse(...)`, **explicitly normalize** the result to the
-        configured token in **both** modes — `result === null ? undefined : result` when `Undefined`,
-        and `result === null ? null : result` (i.e. a visible assignment to `null`) when `Null`. This
-        is the core fix — `JSON.parse("null")` returns `null` regardless of the empty-body ternary.
-        The `Null` branch is intentionally explicit/symmetric rather than collapsing the already-present
-        `null`, so both modes read the same way in the generated code and in the template.
-  - [ ] Initializer `let result… : any = null;` (line 41) and the no-body success branches
-        (`null as any`, lines 85‑105): emit the configured token.
-- [ ] In [Client.ProcessResponse.Return.liquid](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.Return.liquid):
-      replace the `null as any` returns with the configured token consistently for
-      Fetch/Aurelia/Axios/Angular/AngularJS/default branches.
-- [ ] Ensure **204 / no-content** path **resolves with the configured token and never throws**
-      (distinct from body parsing); verify `HasResultType`/no-type branches at
-      [HandleStatusCode.liquid:105](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.HandleStatusCode.liquid#L105).
-- [ ] Cover all three "nothing" cases (empty body, JSON `null`, 204) in the templates so each maps to
-      the configured token — see the Decisions section for the case definitions.
-- [ ] Keep `Null` mode byte-for-byte identical to `master` (default users see zero change).
-- [ ] Re-run runtime tests: previously-red `Undefined` cases now pass; `Null` cases still pass.
-- [ ] Regenerate/verify snapshots (runtime lines now show `undefined` for `Undefined` variants).
-- [ ] **Commit** (green): "GREEN: convert response null→undefined at runtime when
-      ResponseNullValue=Undefined (type/runtime now consistent)".
+- [x] **Expose the rendered token to templates** (deferred from Phase 1). Added
+      `TypeScriptOperationModel.ResultNullValue => _settings.ResponseNullValue ==
+      TypeScriptNullValue.Undefined ? "undefined" : "null"` (mirrors `ResultType`, avoids clashing with
+      the `ResponseNullValue` enum). `ResultType` now reuses it instead of the local `optionalReturn`.
+- [x] **Coerce at the source** (final design — see the Decisions entry for the two reverted attempts).
+      Helper `TypeScriptResponseModel.CoerceToResponseNullValue => ResponseNullValue == Undefined &&
+      IsNullable && Type != "any"` gates a `?? {{ operation.ResultNullValue }}` appended to the
+      `JSON.parse(...)` / Axios `resultData`, and the empty-body ternary emits the token, in
+      [HandleStatusCode.liquid](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.HandleStatusCode.liquid).
+      Plus `NullValue = Settings.ResponseNullValue` in
+      [TypeScriptClientGenerator.cs](../src/NSwag.CodeGeneration.TypeScript/TypeScriptClientGenerator.cs)
+      (was hardcoded `Null`). Together these make **JSON `null` and empty body** resolve to the token for
+      every type / both templates, while the **Axios primitive empty string `""` stays `""`** (`"" ?? x`
+      is `""`), honoring "value, not absent". No post-computation step; output is single-flow. Gated to
+      `Undefined`, so `Null` mode is byte-identical to `master`.
+- [x] **No-body / no-content branches**: replaced `null as any` (8×) and `return null` with
+      `{{ operation.ResultNullValue }}` in HandleStatusCode.liquid, and the same (10× + `return null`) in
+      [Return.liquid](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.Return.liquid).
+      Text-identical in Null mode (token is `"null"`), so **zero default churn** here.
+- [x] **204 / no-content resolves with the token and never throws** — the `response.IsSuccess`
+      HasType-false branch and the `Return.liquid` early return both now emit the token; neither throws.
+- [x] Covered all three "nothing" cases in the templates (empty body, JSON `null`, 204) per the
+      Decisions section. Verified consistent across **all response-processing templates** (Fetch,
+      Angular, AngularJS, JQueryCallbacks, JQueryPromises, Axios; Aurelia→Fetch) — all route through
+      `Client.ProcessResponse`. K6 has no response processing (out of scope).
+- [x] `Null` mode is **byte-for-byte identical** to `master` (coercion gated to `Undefined`; no-content
+      token swaps render identical text since the token is `"null"`). Confirmed: churn snapshots restored
+      to their pre-change content and the **full suite passes 87/87 without regeneration**.
+- [x] Re-run runtime tests: previously-red `Undefined` cases now pass; `Null` cases still pass.
+      → **20/20 runtime tests green.**
+- [x] Regenerate/verify snapshots (runtime lines now show `undefined` for `Undefined` variants).
+      → 23 snapshots updated & inspected; **full suite 87/87 green.**
+- [x] **Commit** (green): "GREEN: convert response null→undefined at runtime when
+      ResponseNullValue=Undefined (type/runtime now consistent)". _(committed manually; includes the (a)
+      initializer fix — `let result…: any = {{ operation.ResultNullValue }}`. The (b) DataConversionCode
+      indentation cleanup is deferred to a separate follow-up commit.)_
 
 ## Phase 4 — Consistency sweep & polish
 
@@ -167,13 +173,22 @@ Goal: change the runtime conversion so it matches the declared type, for every s
 - **Supported templates: ALL TS templates** (Fetch, Angular, Aurelia, Axios, AngularJS,
   JQueryCallbacks, JQueryPromises). Generated TS must stay consistent across every template once the
   setting/feature is in.
-- **Runtime normalization style: explicit and symmetric.** Use `result === null ? undefined : result`
-  for `Undefined` and `result === null ? null : result` for `Null` — a visible assignment of the
-  configured token in both modes, rather than collapsing the already-present `null`. Both branches
-  then read identically.
-  > **Review note:** `?? undefined` remains a fallback should the explicit form prove far too verbose
-  > across the templates. `??` is safe (fires only on `null`/`undefined`, not `""`/`0`/`false`); the
-  > explicit form is preferred purely for readability and symmetry.
+- **Runtime coercion: at the source, gated to `Undefined` mode, zero default churn.**
+  ~~First tried a symmetric post-computation line~~ (`result === null ? … : result` in both modes) —
+  reverted: the `Null`-mode branch is a no-op producing non-sensical code and churning every
+  nullable-response snapshot. ~~Then gated that post-line to `Undefined` only~~ — reverted too: it left an
+  ugly two-step (NJsonSchema's conversion assigns `null`, then we reassign `undefined`).
+  **Final design:** coerce the value *as it is produced*, so no post-step is needed:
+  1. Flow the setting into NJsonSchema's conversion — [TypeScriptClientGenerator.cs](../src/NSwag.CodeGeneration.TypeScript/TypeScriptClientGenerator.cs)
+     `NullValue = Settings.ResponseNullValue` (was hardcoded `Null`). No-op in `Null` mode.
+  2. In [HandleStatusCode.liquid](../src/NSwag.CodeGeneration.TypeScript/Templates/Client.ProcessResponse.HandleStatusCode.liquid),
+     the empty-body branch emits the token, and `?? {{ operation.ResultNullValue }}` is appended to the
+     `JSON.parse(...)` / Axios `resultData`, gated by `response.CoerceToResponseNullValue`
+     (`ResponseNullValue == Undefined && IsNullable && Type != "any"`). This converts a parsed `null`
+     (which NJsonSchema's `x !== undefined ? …` guard would otherwise pass through) before conversion.
+  `??` is safe here and adds no TS-version requirement — the templates already emit it (`baseUrl ?? …`).
+  Result: single-flow output (e.g. `resultData = _responseText === "" ? undefined : JSON.parse(...) ??
+  undefined; result = resultData;`), byte-identical `Null` mode, and only the 4 `Undefined` snapshots move.
 - **All three "nothing" cases map to `ResponseNullValue`.** The generated code must resolve to the
   configured token (`null` or `undefined`) consistently in each of these distinct cases, matching how
   the current templates already treat them:
