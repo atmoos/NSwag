@@ -26,13 +26,13 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             }
         }
 
-        public class NonNullableReturnController
+        public class NullableSimpleTypeReturnController
         {
             [Route("foo")]
-            [return: NotNull]
-            public ReturnDto Test(int a, int? b = null)
+            [return: CanBeNull]
+            public string Test(int a)
             {
-                return new ReturnDto { Value = string.Empty };
+                return null;
             }
         }
 
@@ -53,6 +53,16 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             public object Test(int a, int? b = null)
             {
                 return string.Empty;
+            }
+        }
+
+        public class NonNullableReturnController
+        {
+            [Route("foo")]
+            [return: NotNull]
+            public ReturnDto Test(int a, int? b = null)
+            {
+                return new ReturnDto { Value = string.Empty };
             }
         }
 
@@ -90,9 +100,27 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         }
 
         [Fact]
+        public async Task When_return_value_is_simple_nullable_and_settings_uses_null_then_it_is_a_union_type_with_null()
+        {
+            await VerifyFetchTest<NullableSimpleTypeReturnController>(TypeScriptNullValue.Null);
+        }
+
+        [Fact]
         public async Task When_return_value_is_nullable_and_settings_uses_undefined_then_it_is_a_union_type_with_undefined()
         {
             await VerifyFetchTest<NullableReturnController>(TypeScriptNullValue.Undefined);
+        }
+
+        [Fact]
+        public async Task When_return_value_is_simple_nullable_and_settings_uses_undefined_then_it_is_a_union_type_with_undefined()
+        {
+            await VerifyFetchTest<NullableSimpleTypeReturnController>(TypeScriptNullValue.Undefined);
+        }
+
+        [Fact]
+        public async Task When_return_value_is_nullable_and_settings_uses_undefined_and_interfaceType_is_interface_then_it_is_a_union_type_with_undefined()
+        {
+            await VerifyFetchTest<NullableReturnController>(TypeScriptNullValue.Undefined, interfaceType: TypeScriptTypeStyle.Interface);
         }
 
         [Theory]
@@ -121,13 +149,13 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
 
         [Theory]
         [MemberData(nameof(CompileMatrix))]
-        public async Task All_return_kinds_compile_for_client_template(TypeScriptTemplate template, TypeScriptNullValue nullSetting)
+        public async Task All_return_kinds_compile_for_client_template(TypeScriptTemplate template, TypeScriptNullValue nullSetting, TypeScriptTypeStyle interfaceType)
         {
             // Arrange
             var nullValue = nullSetting == TypeScriptNullValue.Null ? "null" : "undefined";
             var innerUnion = $"{nameof(ReturnDto)} | {nullValue}";
 
-            var code = await RunTest<AllReturnKindsController>(nullSetting, template);
+            var code = await RunTest<AllReturnKindsController>(nullSetting, template, interfaceType);
 
             // The nullable object return carries the configured union type in every client kind.
             Assert.Contains(innerUnion, code);
@@ -142,31 +170,38 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         }
 
         /// <summary>Templates whose generated client can be type-checked with the test project's installed
-        /// npm deps, each in both null-value modes. Angular (needs @angular/core + rxjs) and Aurelia (needs
+        /// npm deps, each in both null-value modes and varying type styles. Angular (needs @angular/core + rxjs) and Aurelia (needs
         /// aurelia-fetch-client) are excluded, matching the rest of the suite (e.g. AngularTests does not
         /// compile-check its output).</summary>
-        public static TheoryData<TypeScriptTemplate, TypeScriptNullValue> CompileMatrix()
+        public static TheoryData<TypeScriptTemplate, TypeScriptNullValue, TypeScriptTypeStyle> CompileMatrix()
         {
-            var data = new TheoryData<TypeScriptTemplate, TypeScriptNullValue>();
             var templates = new[] { Fetch, Axios, AngularJS, JQueryCallbacks, JQueryPromises, };
+            var nullValues = new[] { TypeScriptNullValue.Null, TypeScriptNullValue.Undefined };
+            var interfaceTypeOptions = new[] { TypeScriptTypeStyle.Class, TypeScriptTypeStyle.Interface };
+            var data = new TheoryData<TypeScriptTemplate, TypeScriptNullValue, TypeScriptTypeStyle>();
 
             foreach (var template in templates)
             {
-                data.Add(template, TypeScriptNullValue.Null);
-                data.Add(template, TypeScriptNullValue.Undefined);
+                foreach (var nullValue in nullValues)
+                {
+                    foreach (var interfaceTypeOption in interfaceTypeOptions)
+                    {
+                        data.Add(template, nullValue, interfaceTypeOption);
+                    }
+                }
             }
 
             return data;
         }
 
-        private static async Task VerifyFetchTest<TController>(TypeScriptNullValue nullSetting)
+        private static async Task VerifyFetchTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTypeStyle interfaceType = TypeScriptTypeStyle.Class)
             where TController : class
         {
-            var code = await RunTest<TController>(nullSetting, Fetch);
+            var code = await RunTest<TController>(nullSetting, Fetch, interfaceType);
             await VerifyHelper.Verify(code);
         }
 
-        private static async Task<string> RunTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTemplate template)
+        private static async Task<string> RunTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTemplate template, TypeScriptTypeStyle interfaceType)
             where TController : class
         {
             // Arrange
@@ -179,10 +214,9 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             var settings = new TypeScriptClientGeneratorSettings
             {
                 Template = template,
-                ResponseNullValue = nullSetting,
-                GenerateDtoTypes = true,
+                ResponseNullValue = nullSetting
             };
-            settings.TypeScriptGeneratorSettings.TypeStyle = TypeScriptTypeStyle.Interface;
+            settings.TypeScriptGeneratorSettings.TypeStyle = interfaceType;
             var clientGenerator = new TypeScriptClientGenerator(document, settings);
 
 
