@@ -59,35 +59,56 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             NoContent
         }
 
-        // --- Nullable DTO return: all three cases funnel to null/undefined uniformly on both templates. ---
+        // --- Nullable DTO return: exercised for both DTO type styles (class = fromJS funnel, interface =
+        // JSON.parse cast) so both conversion paths are covered at runtime. ---
+
+        /// <summary>Every (type style, template, body case) combination that resolves to the configured null
+        /// value. An empty body for an <c>interface</c> DTO on Axios stays <c>""</c> (a value, not absent —
+        /// no fromJS funnel), so that one combination is excluded, mirroring the primitive string case.</summary>
+        public static TheoryData<TypeScriptTypeStyle, TypeScriptTemplate, ResponseBodyCase> DtoMatrix()
+        {
+            var bodyCases = Enum.GetValues<ResponseBodyCase>();
+            var typeStyles = new[] { TypeScriptTypeStyle.Class, TypeScriptTypeStyle.Interface };
+            var templateKinds = new[] { TypeScriptTemplate.Fetch, TypeScriptTemplate.Axios };
+            var data = new TheoryData<TypeScriptTypeStyle, TypeScriptTemplate, ResponseBodyCase>();
+            foreach (var typeStyle in typeStyles)
+            {
+                foreach (var template in templateKinds)
+                {
+                    foreach (var bodyCase in bodyCases)
+                    {
+                        if (typeStyle == TypeScriptTypeStyle.Interface
+                            && template == TypeScriptTemplate.Axios
+                            && bodyCase == ResponseBodyCase.EmptyBody)
+                        {
+                            continue;
+                        }
+
+                        data.Add(typeStyle, template, bodyCase);
+                    }
+                }
+            }
+
+            return data;
+        }
 
         [Theory]
-        [InlineData(TypeScriptTemplate.Fetch, ResponseBodyCase.JsonNull)]
-        [InlineData(TypeScriptTemplate.Fetch, ResponseBodyCase.EmptyBody)]
-        [InlineData(TypeScriptTemplate.Fetch, ResponseBodyCase.NoContent)]
-        [InlineData(TypeScriptTemplate.Axios, ResponseBodyCase.JsonNull)]
-        [InlineData(TypeScriptTemplate.Axios, ResponseBodyCase.EmptyBody)]
-        [InlineData(TypeScriptTemplate.Axios, ResponseBodyCase.NoContent)]
+        [MemberData(nameof(DtoMatrix))]
         public async Task Dto_when_ResponseNullValue_is_Undefined_then_runtime_resolves_to_undefined(
-            TypeScriptTemplate template, ResponseBodyCase bodyCase)
+            TypeScriptTypeStyle typeStyle, TypeScriptTemplate template, ResponseBodyCase bodyCase)
         {
             var result = await RunClient<NullableObjectReturnController>(
-                template, TypeScriptNullValue.Undefined, bodyCase);
+                template, TypeScriptNullValue.Undefined, bodyCase, typeStyle);
             Assert.Equal(UndefinedResult, result);
         }
 
         [Theory]
-        [InlineData(TypeScriptTemplate.Fetch, ResponseBodyCase.JsonNull)]
-        [InlineData(TypeScriptTemplate.Fetch, ResponseBodyCase.EmptyBody)]
-        [InlineData(TypeScriptTemplate.Fetch, ResponseBodyCase.NoContent)]
-        [InlineData(TypeScriptTemplate.Axios, ResponseBodyCase.JsonNull)]
-        [InlineData(TypeScriptTemplate.Axios, ResponseBodyCase.EmptyBody)]
-        [InlineData(TypeScriptTemplate.Axios, ResponseBodyCase.NoContent)]
+        [MemberData(nameof(DtoMatrix))]
         public async Task Dto_when_ResponseNullValue_is_Null_then_runtime_resolves_to_null(
-            TypeScriptTemplate template, ResponseBodyCase bodyCase)
+            TypeScriptTypeStyle typeStyle, TypeScriptTemplate template, ResponseBodyCase bodyCase)
         {
             var result = await RunClient<NullableObjectReturnController>(
-                template, TypeScriptNullValue.Null, bodyCase);
+                template, TypeScriptNullValue.Null, bodyCase, typeStyle);
             Assert.Equal(NullResult, result);
         }
 
@@ -120,7 +141,8 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         }
 
         private static async Task<string> RunClient<TController>(
-            TypeScriptTemplate template, TypeScriptNullValue responseNullValue, ResponseBodyCase bodyCase)
+            TypeScriptTemplate template, TypeScriptNullValue responseNullValue, ResponseBodyCase bodyCase,
+            TypeScriptTypeStyle typeStyle = TypeScriptTypeStyle.Class)
             where TController : class
         {
             // The generated client class name mirrors the controller name with "Controller" -> "Client".
@@ -136,7 +158,8 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             var clientGenerator = new TypeScriptClientGenerator(document, new TypeScriptClientGeneratorSettings
             {
                 Template = template,
-                ResponseNullValue = responseNullValue
+                ResponseNullValue = responseNullValue,
+                TypeScriptGeneratorSettings = { TypeStyle = typeStyle }
             });
 
             var code = clientGenerator.GenerateFile() + BuildHarness(clientClassName, bodyCase);
