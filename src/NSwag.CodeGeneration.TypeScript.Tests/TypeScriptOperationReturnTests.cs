@@ -120,7 +120,7 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         [Fact]
         public async Task When_return_value_is_nullable_and_settings_uses_undefined_and_interfaceType_is_interface_then_it_is_a_union_type_with_undefined()
         {
-            await VerifyFetchTest<NullableReturnController>(TypeScriptNullValue.Undefined, interfaceType: TypeScriptTypeStyle.Interface);
+            await VerifyFetchTest<NullableReturnController>(TypeScriptNullValue.Undefined, typeStyle: TypeScriptTypeStyle.Interface);
         }
 
         [Theory]
@@ -194,14 +194,14 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             return data;
         }
 
-        private static async Task VerifyFetchTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTypeStyle interfaceType = TypeScriptTypeStyle.Class)
+        private static async Task VerifyFetchTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTypeStyle typeStyle = TypeScriptTypeStyle.Class)
             where TController : class
         {
-            var code = await RunTest<TController>(nullSetting, Fetch, interfaceType);
+            var code = await RunTest<TController>(nullSetting, Fetch, typeStyle);
             await VerifyHelper.Verify(code);
         }
 
-        private static async Task<string> RunTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTemplate template, TypeScriptTypeStyle interfaceType)
+        private static async Task<string> RunTest<TController>(TypeScriptNullValue nullSetting, TypeScriptTemplate template, TypeScriptTypeStyle typeStyle)
             where TController : class
         {
             // Arrange
@@ -214,9 +214,9 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             var settings = new TypeScriptClientGeneratorSettings
             {
                 Template = template,
-                ResponseNullValue = nullSetting
+                ResponseNullValue = nullSetting,
+                TypeScriptGeneratorSettings = { TypeStyle = typeStyle }
             };
-            settings.TypeScriptGeneratorSettings.TypeStyle = interfaceType;
             var clientGenerator = new TypeScriptClientGenerator(document, settings);
 
 
