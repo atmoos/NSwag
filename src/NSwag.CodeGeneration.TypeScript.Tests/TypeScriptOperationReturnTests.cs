@@ -20,7 +20,7 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         {
             [Route("foo")]
             [return: CanBeNull]
-            public string Test(int a)
+            public ReturnDto Test(int a)
             {
                 return null;
             }
@@ -30,9 +30,9 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
         {
             [Route("foo")]
             [return: NotNull]
-            public string Test(int a, int? b = null)
+            public ReturnDto Test(int a, int? b = null)
             {
-                return string.Empty;
+                return new ReturnDto { Value = string.Empty };
             }
         }
 
@@ -176,11 +176,15 @@ namespace NSwag.CodeGeneration.TypeScript.Tests
             });
 
             var document = await generator.GenerateForControllerAsync<TController>();
-            var clientGenerator = new TypeScriptClientGenerator(document, new TypeScriptClientGeneratorSettings
+            var settings = new TypeScriptClientGeneratorSettings
             {
                 Template = template,
-                ResponseNullValue = nullSetting
-            });
+                ResponseNullValue = nullSetting,
+                GenerateDtoTypes = true,
+            };
+            settings.TypeScriptGeneratorSettings.TypeStyle = TypeScriptTypeStyle.Interface;
+            var clientGenerator = new TypeScriptClientGenerator(document, settings);
+
 
             var json = document.ToJson();
             Assert.NotNull(json);

@@ -49,5 +49,20 @@ namespace NSwag.CodeGeneration.TypeScript.Models
         /// union: the response is nullable and the type is not "any" (which already allows null/undefined).</summary>
         public bool CoerceToResponseNullValue =>
             _settings.ResponseNullValue == TypeScriptNullValue.Undefined && IsNullable && Type != "any";
+
+        /// <summary>Gets the TypeScript expression that turns the raw response text into the result value:
+        /// the plain-text passthrough, or a JSON parse (with reference handling) using the reviver.</summary>
+        public string DeserializeResponseTextExpression => IsPlainText
+            ? "_responseText"
+            : (_settings.TypeScriptGeneratorSettings.HandleReferences ? "jsonParse" : "JSON.parse") + "(_responseText, this.jsonParseReviver)";
+
+        /// <summary>Gets the declared type of the local <c>result</c> variable. When a nullable result is
+        /// coerced to the configured null value it is typed precisely (<c>T | null</c>/<c>T | undefined</c>);
+        /// otherwise <c>any</c> — the permissive form the DTO conversion code is written against.</summary>
+        public string ResultVariableType =>
+            CoerceToResponseNullValue ? Type + " | " + ResultNullValueLiteral : "any";
+
+        private string ResultNullValueLiteral =>
+            _settings.ResponseNullValue == TypeScriptNullValue.Undefined ? "undefined" : "null";
     }
 }

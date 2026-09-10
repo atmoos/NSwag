@@ -11,7 +11,7 @@ export class NullableReturnClient {
         this.baseUrl = baseUrl ?? "";
     }
 
-    test(a: number): Promise<string | undefined> {
+    test(a: number): Promise<ReturnDto | undefined> {
         let url_ = this.baseUrl + "/foo?";
         if (a === undefined || a === null)
             throw new globalThis.Error("The parameter 'a' must be defined and cannot be null.");
@@ -31,15 +31,13 @@ export class NullableReturnClient {
         });
     }
 
-    protected processTest(response: Response): Promise<string | undefined> {
+    protected processTest(response: Response): Promise<ReturnDto | undefined> {
         const status = response.status;
         let _headers: any = {}; if (response.headers && response.headers.forEach) { response.headers.forEach((v: any, k: any) => _headers[k] = v); };
         if (status === 200) {
             return response.text().then((_responseText) => {
-            let result200: any = undefined;
-            let resultData200 = _responseText === "" ? undefined : JSON.parse(_responseText, this.jsonParseReviver) ?? undefined;
-                result200 = resultData200;
-    
+            let result200: ReturnDto | undefined = undefined;
+            result200 = _responseText === "" ? undefined : (JSON.parse(_responseText, this.jsonParseReviver) as ReturnDto) ?? undefined;
             return result200;
             });
         } else if (status !== 200 && status !== 204) {
@@ -47,8 +45,12 @@ export class NullableReturnClient {
             return throwException("An unexpected server error occurred.", status, _responseText, _headers);
             });
         }
-        return Promise.resolve<string | undefined>(undefined as any);
+        return Promise.resolve<ReturnDto | undefined>(undefined);
     }
+}
+
+export interface ReturnDto {
+    Value?: string | undefined;
 }
 
 export class ApiException extends Error {
