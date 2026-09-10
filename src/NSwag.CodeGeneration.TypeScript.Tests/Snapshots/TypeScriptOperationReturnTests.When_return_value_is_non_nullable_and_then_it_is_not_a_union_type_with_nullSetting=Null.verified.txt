@@ -39,7 +39,8 @@ export class NonNullableReturnClient {
         if (status === 200) {
             return response.text().then((_responseText) => {
             let result200: any = null;
-            result200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver) as ReturnDto;
+            let resultData200 = _responseText === "" ? null : JSON.parse(_responseText, this.jsonParseReviver);
+            result200 = ReturnDto.fromJS(resultData200);
             return result200;
             });
         } else if (status !== 200 && status !== 204) {
@@ -51,8 +52,40 @@ export class NonNullableReturnClient {
     }
 }
 
-export interface ReturnDto {
-    Value?: string | undefined;
+export class ReturnDto implements IReturnDto {
+    value?: string | undefined;
+
+    constructor(data?: IReturnDto) {
+        if (data) {
+            for (var property in data) {
+                if (data.hasOwnProperty(property))
+                    (this as any)[property] = (data as any)[property];
+            }
+        }
+    }
+
+    init(_data?: any) {
+        if (_data) {
+            this.value = _data["Value"];
+        }
+    }
+
+    static fromJS(data: any): ReturnDto {
+        data = typeof data === 'object' ? data : {};
+        let result = new ReturnDto();
+        result.init(data);
+        return result;
+    }
+
+    toJSON(data?: any) {
+        data = typeof data === 'object' ? data : {};
+        data["Value"] = this.value;
+        return data;
+    }
+}
+
+export interface IReturnDto {
+    value?: string | undefined;
 }
 
 export class ApiException extends Error {
