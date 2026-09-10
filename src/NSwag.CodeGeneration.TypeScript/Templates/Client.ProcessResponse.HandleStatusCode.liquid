@@ -38,7 +38,7 @@ return response.blob().then(blob => { return { fileName: fileName, data: blob, s
 {% else -%}
 {% template Client.ProcessResponse.ReadBodyStart %}
 {%     if response.HasType -%}
-let result{{ response.StatusCode }}: any = {{ operation.ResultNullValue }};
+let result{{ response.StatusCode }}: {{ response.ResultVariableType }} = {{ operation.ResultNullValue }};
 {%         if Framework.IsAxios -%}
 let resultData{{ response.StatusCode }}  = _responseText{% if response.CoerceToResponseNullValue %} ?? {{ operation.ResultNullValue }}{% endif %};
 {%             if response.UseDtoClass -%}
@@ -48,10 +48,10 @@ result{{ response.StatusCode }} = {% unless response.IsPlainText or Framework.Is
 {%             endif -%}
 {%         else -%}
 {%              if response.UseDtoClass or response.IsDateOrDateTime -%}
-let resultData{{ response.StatusCode }} = _responseText === "" ? {{ operation.ResultNullValue }} : {% if response.IsPlainText %}_responseText{% else %}{% if operation.HandleReferences %}jsonParse{% else %}JSON.parse{% endif %}(_responseText, this.jsonParseReviver){% endif %}{% if response.CoerceToResponseNullValue %} ?? {{ operation.ResultNullValue }}{% endif %};
+let resultData{{ response.StatusCode }} = _responseText === "" ? {{ operation.ResultNullValue }} : {{ response.DeserializeResponseTextExpression }}{% if response.CoerceToResponseNullValue %} ?? {{ operation.ResultNullValue }}{% endif %};
 {{ response.DataConversionCode }}
 {%              else -%}
-result{{ response.StatusCode }} = _responseText === "" ? {{ operation.ResultNullValue }} : {% if response.IsPlainText %}_responseText{% else %}{% if operation.HandleReferences %}jsonParse{% else %}JSON.parse{% endif %}(_responseText, this.jsonParseReviver){% endif %}{% if response.CoerceToResponseNullValue %} ?? {{ operation.ResultNullValue }}{% endif %} as {{ response.Type }};
+result{{ response.StatusCode }} = _responseText === "" ? {{ operation.ResultNullValue }} : {% if response.CoerceToResponseNullValue %}({{ response.DeserializeResponseTextExpression }} as {{ response.Type }}) ?? {{ operation.ResultNullValue }}{% else %}{{ response.DeserializeResponseTextExpression }} as {{ response.Type }}{% endif %};
 {%              endif -%}
 {%         endif -%}
 {%         if response.IsSuccess -%}
@@ -93,14 +93,14 @@ return new {{ operation.ResponseClass }}(status, _headers, {{ operation.ResultNu
 {%         else -%}
 {%             if Framework.IsAngular -%}
 {%                 if Framework.UseRxJs7 -%}
-return {{ Framework.RxJs.ObservableOfMethod }}({{ operation.ResultNullValue }} as any);
+return {{ Framework.RxJs.ObservableOfMethod }}({{ operation.ResultNullValueReturn }});
 {%                 else -%}
-return {{ Framework.RxJs.ObservableOfMethod }}<{{operation.ResultType}}>({{ operation.ResultNullValue }} as any);
+return {{ Framework.RxJs.ObservableOfMethod }}<{{operation.ResultType}}>({{ operation.ResultNullValueReturn }});
 {%                 endif -%}
 {%             elsif Framework.IsAngularJS -%}
-return this.q.resolve<{{ operation.ResultType }}>({{ operation.ResultNullValue }} as any);
+return this.q.resolve<{{ operation.ResultType }}>({{ operation.ResultNullValueReturn }});
 {%             elsif Framework.IsAxios -%}
-return Promise.resolve<{{ operation.ResultType }}>({{ operation.ResultNullValue }} as any);
+return Promise.resolve<{{ operation.ResultType }}>({{ operation.ResultNullValueReturn }});
 {%             else -%}
 return{% if operation.HasResultType %} {{ operation.ResultNullValue }}{% endif %};
 {%             endif -%}
